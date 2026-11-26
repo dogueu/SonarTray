@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish single-file executable
+        shell: pwsh
+        run: dotnet publish SonarTray.csproj -c Release --nologo
+
+      - name: Package release assets
+        shell: pwsh
+        run: |
+          $publishDir = "bin/Release/net8.0-windows/win-x64/publish"
+          $exePath = Join-Path $publishDir "SonarTray.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "Published SonarTray.exe not found at $exePath"
+          }
+          New-Item -ItemType Directory -Path "release-assets" -Force | Out-Null
+          Copy-Item -Path $exePath -Destination "release-assets/SonarTray.exe"
+          Compress-Archive -Path $exePath -DestinationPath "release-assets/SonarTray.zip" -Force
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "release-assets/SonarTray.exe" `
+            "release-assets/SonarTray.zip" `
+            --title "SonarTray ${{ github.ref_name }}" `
+            --generate-notes
